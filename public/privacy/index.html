@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analytics UserId Calculator</title>
+    <title>Analytics ID Calculator</title>
     <!-- 1. Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 2. Load the forge library -->
@@ -19,7 +19,7 @@
 
     <div class="w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg m-4">
         <h1 class="text-2xl font-bold text-center text-gray-800 dark:text-white mb-4">
-            Analytics UserID calculator
+            Analytics ID calculator
         </h1>
         <p class="text-sm text-gray-600 dark:text-gray-400 text-center mb-6">
             Enter a User ID to generate the corresponding Analytics ID.
@@ -50,7 +50,7 @@
             </label>
             <div class="relative flex items-center">
                 <!-- Hidden textarea for copying -->
-                <textarea id="outputHashForCopy" class="absolute -left-[9999px] h-0 w-0"></textarea>
+                <textarea id="outputHashForCopy" class="absolute -left-[9999px]" readonly></textarea>
                 
                 <!-- Display for the hash -->
                 <div id="outputHashDisplay" class="w-full p-4 font-mono text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg break-all h-24 overflow-y-auto">
@@ -95,7 +95,7 @@
 
             // --- Calculation Logic ---
             calculateBtn.addEventListener('click', () => {
-                const input = userIdInput.value;
+                const input = userIdInput.value.trim(); // <-- Added .trim()
                 if (!input) {
                     outputHashDisplay.textContent = '...';
                     outputHashForCopy.value = '';
