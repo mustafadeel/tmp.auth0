@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics UserId Calculator</title>
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Load the forge library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script> <!-- <-- UPDATED LINK -->
+    <style>
+        /* Simple transition for the copy button */
+        .copy-btn-feedback {
+            transition: all 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 flex items-center justify-center h-full font-sans antialiased">
+
+    <div class="w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg m-4">
+        <h1 class="text-2xl font-bold text-center text-gray-800 dark:text-white mb-4">
+            Analytics UserID calculator
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400 text-center mb-6">
+            Enter a User ID to generate the corresponding Analytics ID.
+        </p>
+
+        <!-- NEW: Error Message Area -->
+        <p id="error-message" class="text-sm text-red-500 text-center mb-6 hidden">
+            Error: The 'forge' library failed to load. Please check your network connection or ad blocker.
+        </p>
+
+        <!-- Input Section -->
+        <div class="mb-4">
+            <label for="userIdInput" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Input (e.g., User ID)
+            </label>
+            <input type="text" id="userIdInput" class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="user_12345">
+        </div>
+
+        <!-- Calculate Button -->
+        <button id="calculateBtn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200">
+            Calculate Hash
+        </button>
+
+        <!-- Output Section -->
+        <div class="mt-6">
+            <label for="outputHash" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Output Hash (SHA-256)
+            </label>
+            <div class="relative flex items-center">
+                <!-- Hidden textarea for copying -->
+                <textarea id="outputHashForCopy" class="absolute -left-[9999px] h-0 w-0"></textarea>
+                
+                <!-- Display for the hash -->
+                <div id="outputHashDisplay" class="w-full p-4 font-mono text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg break-all h-24 overflow-y-auto">
+                    ...
+                </div>
+                
+                <!-- Copy Button -->
+                <button id="copyBtn" class="absolute top-2 right-2 p-2 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 copy-btn-feedback">
+                    <!-- SVG for copy icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                </button>
+            </div>
+            <p id="copyFeedback" class="text-xs text-green-500 text-right mt-1 h-4"></p>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('load', () => { 
+            const userIdInput = document.getElementById('userIdInput');
+            const calculateBtn = document.getElementById('calculateBtn');
+            const outputHashDisplay = document.getElementById('outputHashDisplay');
+            const outputHashForCopy = document.getElementById('outputHashForCopy');
+            const copyBtn = document.getElementById('copyBtn');
+            const copyFeedback = document.getElementById('copyFeedback');
+            const errorMessage = document.getElementById('error-message'); // <-- Get error message element
+            let feedbackTimeout;
+
+            // --- FIX: Check if forge is loaded ---
+            if (typeof forge === 'undefined') {
+                console.error("Critical Error: 'forge' library is not defined on window.load.");
+                // Show a user-facing error message
+                errorMessage.classList.remove('hidden');
+                // Disable the button to prevent further errors
+                calculateBtn.disabled = true;
+                calculateBtn.textContent = 'Library Load Failed';
+                calculateBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                calculateBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                return; // Stop execution
+            }
+
+            // --- Calculation Logic ---
+            calculateBtn.addEventListener('click', () => {
+                const input = userIdInput.value;
+                if (!input) {
+                    outputHashDisplay.textContent = '...';
+                    outputHashForCopy.value = '';
+                    return;
+                }
+
+                try {
+                    // This is the exact logic from your function
+                    const md = forge.md.sha256.create();
+                    md.update(input);
+                    const hash = md.digest().toHex();
+
+                    // Display the result
+                    outputHashDisplay.textContent = hash;
+                    // Put in hidden textarea for copying
+                    outputHashForCopy.value = hash;
+
+                } catch (err) {
+                    console.error('Hashing failed:', err);
+                    outputHashDisplay.textContent = 'Error calculating hash.';
+                    outputHashForCopy.value = '';
+                }
+            });
+
+            // --- Copy Logic ---
+            copyBtn.addEventListener('click', () => {
+                const hashToCopy = outputHashForCopy.value;
+                if (!hashToCopy || hashToCopy === '...') {
+                    return;
+                }
+
+                // Use the hidden textarea to perform the copy command
+                // This is more reliable in iFrames than navigator.clipboard
+                outputHashForCopy.select();
+                try {
+                    document.execCommand('copy');
+                    
+                    // Show visual feedback
+                    copyFeedback.textContent = 'Copied!';
+                    copyBtn.classList.add('text-green-500');
+
+                    // Clear feedback after 2 seconds
+                    clearTimeout(feedbackTimeout); // Clear previous timeout if any
+                    feedbackTimeout = setTimeout(() => {
+                        copyFeedback.textContent = '';
+                        copyBtn.classList.remove('text-green-500');
+                    }, 2000);
+
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                    copyFeedback.textContent = 'Copy failed';
+                }
+                
+                // Deselect text
+                window.getSelection().removeAllRanges();
+            });
+        });
+    </script>
+
+</body>
+</html>
