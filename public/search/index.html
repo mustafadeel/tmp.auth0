@@ -144,6 +144,13 @@
             vertical-align: middle;
             color: #e2e8f0;
         }
+        /* A new style for helper text that won't be picked up by keyboard nav */
+        .suggestion-helper {
+            padding: 0.75rem 1rem;
+            font-size: 0.9em;
+            color: #94a3b8; /* slate-400 */
+            font-style: italic;
+        }
     </style>
 </head>
 <body data-mdb-theme="dark" class="p-4 sm:p-6 md:p-8">
@@ -168,12 +175,6 @@
                     
                     <!-- Suggestions Panel (for text input) -->
                     <div id="suggestions-panel" class="position-absolute w-100 shadow-5-strong rounded-3" style="display: none;"></div>
-                </div>
-
-                <button id="run-query-btn" class="btn btn-primary flex-shrink-0">Run Query <kbd class="ms-2 kbd-shortcut">↵</kbd></button>
-                <div class="flex-shrink-0">
-                    <button id="copy-query-btn" class="btn btn-outline-light">Copy</button>
-                    <span id="copy-feedback" class="text-success ms-2" style="opacity: 0; transition: opacity 0.3s ease-in-out;">Copied!</span>
                 </div>
             </div>
              <div class="form-text text-muted mt-2 ps-1 d-flex align-items-center">
@@ -244,8 +245,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
     const mockUsers = [
         { name: 'Alice Johnson', email: 'alice.j@workplace.io', email_verified: true, logins_count: 12, blocked: false, last_login: '2025-09-24T10:00:00Z', last_password_reset: '2025-09-01T10:00:00Z', app_metadata: { plan: 'gold', seats: 5 }, organization: { name: 'Acme Corp', id: 'org_GxlLOQd7FVfXMsiA' }, authentication_method: 'Push notification', role: 'Admin', identities: [{ connection: 'Username-Password-Authentication' }] },
-        { name: 'Bob Williams', email: 'bob.w@startup.net', email_verified: false, logins_count: 3, blocked: false, last_login: '2025-09-23T14:30:00Z', last_password_reset: '2025-08-15T14:30:00Z', app_metadata: { plan: 'silver', seats: 1 }, organization: { name: 'Startup Inc', id: 'org_Kj8RnHs3bT2fPqYl' }, authentication_method: 'SMS notification', role: 'Editor', identities: [{ connection: 'google-oauth2' }] },
-        { name: 'Charlie Brown', email: 'charlie.b@example.com', email_verified: true, logins_count: 45, blocked: true, last_login: '2025-09-20T08:15:00Z', last_password_reset: '2025-07-20T08:15:00Z', user_metadata: { theme: 'dark', language: 'en' }, organization: { name: 'Acme Corp', id: 'org_GxlLOQd7FVfXMsiA' }, authentication_method: 'One-time password', role: 'Admin', identities: [{ connection: 'saml' }] },
+        { name: 'Bob Williams', email: 'bob.w@startup.net', email_verified: false, logins_count: 3, blocked: false, last_login: '2025-09-23T14:30:00Z', last_password_reset: '2025-08-15T14:30:00Z', app_metadata: { plan: 'silver', seats: 1 }, organization: { name: 'Startup Inc', id: 'org_Kj8RnHs3bT2fPqYl' }, authentication_method: 'SMS notification', role: 'Admin', identities: [{ connection: 'google-oauth2' }] },
+        { name: 'Charlie Brown', email: 'charlie.b@example.com', email_verified: true, logins_count: 45, blocked: true, last_login: '2025-09-20T08:15:00Z', last_password_reset: '2025-07-20T08:15:00Z', user_metadata: { theme: 'dark', language: 'en' }, organization: { name: 'Acme Corp', id: 'org_GxlLOQd7FVfXMsiA' }, authentication_method: 'One-time password', role: 'Viewer', identities: [{ connection: 'saml' }] },
         { name: 'Diana Miller', email: 'diana.m@design.co', email_verified: true, logins_count: 0, blocked: false, last_login: null, last_password_reset: null, authentication_method: 'Email', role: 'Viewer', identities: [{ connection: 'Username-Password-Authentication' }] },
         { name: 'Ethan Davis', email: 'ethan.d@dev-team.org', email_verified: false, logins_count: 1, blocked: false, last_login: '2025-09-04T20:45:00Z', last_password_reset: '2025-09-04T20:45:00Z', app_metadata: { plan: 'gold', seats: 10 }, organization: { name: 'Startup Inc', id: 'org_Kj8RnHs3bT2fPqYl' }, authentication_method: 'WebAuthn', role: 'Editor', identities: [{ connection: 'google-oauth2' }] },
         { name: 'Fiona Green', email: 'fiona.g@example.org', email_verified: true, logins_count: 88, blocked: false, last_login: '2025-08-15T11:00:00Z', last_password_reset: '2025-06-10T11:00:00Z', user_metadata: { theme: 'light' }, authentication_method: 'Push notification', role: 'Viewer', identities: [{ connection: 'facebook' }] }
@@ -286,10 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pillInputContainer = document.getElementById('pill-input-container');
     const queryInput = document.getElementById('pill-query-input');
     const suggestionsPanel = document.getElementById('suggestions-panel');
-    const copyQueryBtn = document.getElementById('copy-query-btn');
-    const copyFeedback = document.getElementById('copy-feedback');
     const userTableBody = document.getElementById('user-table-body');
-    const runQueryBtn = document.getElementById('run-query-btn');
     const clearAllBtn = document.getElementById('clear-all-btn');
     const shareQueryBtn = document.getElementById('share-query-btn');
 
@@ -299,11 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EVENT LISTENERS ---
     pillInputContainer.addEventListener('click', () => queryInput.focus());
-    runQueryBtn.addEventListener('click', () => {
-        addPillFromInput();
-        runQuery();
-    });
-    copyQueryBtn.addEventListener('click', copyQuery);
     queryInput.addEventListener('paste', handlePaste);
     queryInput.addEventListener('input', handleInput);
     queryInput.addEventListener('keydown', handleKeyDown);
@@ -318,7 +311,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     clearAllBtn.addEventListener('click', () => {
         setQueryState([]);
-        runQuery();
         queryInput.focus();
         updateURL(null); 
     });
@@ -337,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setQueryState(newState) {
         queryState = newState;
         renderPills();
+        runQuery(); // Run query every time state changes
     }
     
     function addPill(pill) {
@@ -348,6 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderPills();
         justCompletedPill = true; // Flag that we just made a pill
+        runQuery(); // Run query every time a pill is added
     }
     
     function removePill(index, skipQueryRun = false) {
@@ -447,7 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!pillToEdit || pillToEdit.type !== 'condition') return;
 
         editingPillIndex = index;
-        removePill(index, true); 
+        removePill(index, true); // Pass true to skip running query
 
         const pillText = `${pillToEdit.negated ? '-' : ''}${pillToEdit.key}:${pillToEdit.value}`;
         queryInput.value = pillText;
@@ -473,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault(); // Intercept only in this case
             parseStringToPills(pastedText);
             queryInput.value = '';
-            runQuery();
+            // runQuery() will be called by parseStringToPills -> setQueryState
         }
         // Otherwise, let the default paste happen (for pasting values)
     }
@@ -511,10 +505,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const filteredUsers = filterUsers(query || queryInput.value);
         renderUserTable(filteredUsers);
         updateURL(query);
-        hideSuggestions(); // Hide suggestions when query is run
+        // We no longer hide suggestions here, as it might be annoying
+        // hideSuggestions();
     }
     
     function handleInput() {
+        justCompletedPill = false; // [FIX] Any new input resets the flag
         const { value, selectionStart } = queryInput;
         if (value.trim() === '' && editingPillIndex > -1) {
             editingPillIndex = -1;
@@ -543,18 +539,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (suggestionsVisible && (e.key === 'Enter' || e.key === 'Tab')) {
             if (activeSuggestionIndex > -1) {
                 e.preventDefault();
-                selectSuggestionByIndex(activeSuggestionIndex, e.altKey);
+                selectSuggestionByIndex(activeSuggestionIndex);
                 return;
             }
         }
         
         if (e.key === 'Enter') {
             // If suggestions are visible but nothing is selected (e.g., string filter),
-            // or if suggestions are hidden, commit and run.
+            // or if suggestions are hidden, commit the text as a pill.
+            // runQuery() will be called by addPill().
             if (!suggestionsVisible || (suggestionsVisible && activeSuggestionIndex === -1)) {
                 e.preventDefault();
                 addPillFromInput();
-                runQuery();
+                // runQuery() is no longer needed here, addPill handles it.
                 return;
             }
         }
@@ -582,7 +579,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const suggestions = getSuggestions(analysis);
             renderSuggestions(suggestions, analysis);
         }
-    }
+     }
     
     function analyzeQuery(text, cursorPosition) {
         const textUpToCursor = text.substring(0, cursorPosition);
@@ -658,18 +655,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 const type = searchableFields[key].type;
                 return type === 'string' || type === 'enum';
             });
-            const prefilledSuggestions = stringFields.map(fieldKey => {
+
+            // [FIX] Smart prefilled suggestions for enums
+            const prefilledSuggestions = [];
+            const tokenLower = currentToken.toLowerCase();
+
+            stringFields.forEach(fieldKey => {
                 const fieldType = searchableFields[fieldKey].type;
-                const value = (fieldType === 'enum') ? `"${currentToken}"` : currentToken;
-                return `${fieldKey}:${value}`;
+                if (fieldType === 'enum') {
+                    let options = [];
+                    if (fieldKey === 'role') options = roleOptions;
+                    else if (fieldKey === 'authentication_method') options = authMethodOptions;
+                    else if (fieldKey === 'identities.connection') options = connectionOptions;
+
+                    const matchingOption = options.find(opt => opt.toLowerCase().includes(tokenLower));
+                    if (matchingOption) {
+                        prefilledSuggestions.push(`${fieldKey}:"${matchingOption}"`);
+                    }
+                } else {
+                    // Default string behavior
+                    prefilledSuggestions.push(`${fieldKey}:${currentToken}`);
+                }
             });
+            
             return { type: 'prefilled_query', values: prefilledSuggestions };
         }
 
         return { type: 'field', values: Object.keys(searchableFields) };
     }
     
-    function selectSuggestion(selected, type, isModifierHeld = false) {
+    function selectSuggestion(selected, type) {
         isSuggesting = true; // Tell handleFocus to ignore this
         const { value, selectionStart } = queryInput;
         const analysis = analyzeQuery(value, selectionStart);
@@ -687,23 +702,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const fieldType = searchableFields[baseField]?.type || searchableFields[field]?.type;
             
             // NEW logic for immediate commit (bool and enum)
-            if ((fieldType === 'enum' || fieldType === 'boolean') && !isModifierHeld) {
+            if (fieldType === 'enum' || fieldType === 'boolean') {
                 const valueToUse = (fieldType === 'enum') ? `"${selected}"` : selected;
                 addPill({ type: 'condition', key: field, value: valueToUse, negated: (prefix === '-') });
                 queryInput.value = '';
                 hideSuggestions(); // Hide after committing
-                return;
+                return; // Return to skip timeout logic
             }
             // END NEW
 
+            // This logic is now only for non-enum/non-boolean values
             const valueToUse = (fieldType === 'enum') ? `"${selected}"` : selected;
-            
-            let newValue = '';
-            if (existingValues && existingValues !== '""' && isModifierHeld) {
-                newValue = `${existingValues},${valueToUse}`;
-            } else {
-                newValue = valueToUse;
-            }
+            let newValue = valueToUse;
             queryInput.value = `${prefix}${field}:${newValue}`;
 
         } else if (type === 'date_range') {
@@ -712,7 +722,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (selectedOption.value === 'manual') {
                 // Show manual template
-                const replacement = `${prefix}${field}:[YYYY-MM-DD TO YYYY-MM-DD]`;
+                const replacement = `${prefix}${field}:[YYYY-MM-DD TO YYY-MM-DD]`;
                 queryInput.value = replacement;
             } else {
                 // Add pill with calculated range
@@ -733,21 +743,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const before = value.substring(0, selectionStart - currentToken.length - (prefix ? 1 : 0));
             const after = value.substring(selectionStart);
             queryInput.value = before + replacement + after;
-        }
-        
-        // Logic for multi-select enum (don't hide, re-render)
-        if (isModifierHeld && type === 'value' && searchableFields[baseField]?.type === 'enum') {
-            // Re-show suggestions immediately
-            setTimeout(() => {
-                queryInput.focus();
-                // Re-render suggestions with an empty token to show all options
-                const newAnalysis = { ...analysis, currentToken: '' }; 
-                const suggestions = getSuggestions(newAnalysis);
-                renderSuggestions(suggestions, newAnalysis);
-                const end = queryInput.value.length;
-                queryInput.setSelectionRange(end, end);
-            }, 0);
-            return;
         }
         
         // For all selections, set timeout to focus and re-evaluate suggestions
@@ -773,12 +768,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 0);
     }
     
-    function selectSuggestionByIndex(index, isModifierHeld = false) {
-        const items = suggestionsPanel.querySelectorAll('.list-group-item:not(.list-group-item-header)');
+    function selectSuggestionByIndex(index) {
+        const items = suggestionsPanel.querySelectorAll('.list-group-item-action');
         if (items[index]) {
             const selected = items[index].dataset.value;
             const type = items[index].dataset.type;
-            selectSuggestion(selected, type, isModifierHeld);
+            selectSuggestion(selected, type);
         }
     }
     
@@ -812,14 +807,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderSuggestions(suggestions, analysis) {
         if (analysis.context === 'metadata_path') {
-            suggestionsPanel.innerHTML = `<div class="list-group"><div class="list-group-item text-muted fst-italic">Complete the path (e.g., plan.seats) and add a colon.</div></div>`;
+            suggestionsPanel.innerHTML = `<div class="suggestion-helper">Complete the path and add a value. (e.g. type:legacy)</div>`;
             suggestionsPanel.style.display = 'block';
+            activeSuggestionIndex = -1; // [FIX] Reset index for helper
             return;
         }
 
         if (analysis.context === 'value' && analysis.field === 'organization') {
-            suggestionsPanel.innerHTML = `<div class="list-group"><div class="list-group-item text-muted fst-italic">Enter an organization name or ID (e.g., org_xyz).</div></div>`;
+            suggestionsPanel.innerHTML = `<div class="suggestion-helper">Enter an organization name or ID (e.g., org_xyz).</div>`;
             suggestionsPanel.style.display = 'block';
+            activeSuggestionIndex = -1; // [FIX] Reset index for helper
             return;
         }
 
@@ -861,23 +858,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             item.innerHTML = `${mainText}<small class="text-muted">${description}</small>`;
-            item.addEventListener('click', (e) => { e.preventDefault(); selectSuggestion(suggestion, suggestions.type, e.altKey); });
+            item.addEventListener('click', (e) => { e.preventDefault(); selectSuggestion(suggestion, suggestions.type); });
             listGroup.appendChild(item);
         });
-        
-        // Add helper for enums
-        if (suggestions.type === 'value' && searchableFields[analysis.field]?.type === 'enum') {
-            const footer = document.createElement('div');
-            footer.className = 'list-group-item text-muted fst-italic py-2 px-3';
-            footer.style.fontSize = '0.8em';
-            footer.innerHTML = `Hold <kbd class="kbd-shortcut">Option</kbd> (or <kbd class="kbd-shortcut">Alt</kbd>) to select multiple values.`;
-            listGroup.appendChild(footer);
-        }
         
         suggestionsPanel.appendChild(listGroup);
         suggestionsPanel.style.display = 'block';
 
-        const items = suggestionsPanel.getElementsByClassName('list-group-item');
+        // Find only selectable items for keyboard navigation
+        const items = suggestionsPanel.querySelectorAll('.list-group-item-action');
         activeSuggestionIndex = items.length > 0 ? 0 : -1;
         if (activeSuggestionIndex === 0 && items.length > 0) {
             items[0].classList.add('active');
@@ -885,7 +874,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function updateActiveSuggestion(direction) {
-        const items = suggestionsPanel.querySelectorAll('.list-group-item:not(.list-group-item-header)');
+        const items = suggestionsPanel.querySelectorAll('.list-group-item-action');
         if (items.length === 0) return;
         if (activeSuggestionIndex > -1) items[activeSuggestionIndex].classList.remove('active');
         activeSuggestionIndex += direction;
@@ -916,7 +905,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const query = urlParams.get('q');
             if (query) {
                 parseStringToPills(query);
-                runQuery();
+                // runQuery() will be called by parseStringToPills -> setQueryState
             }
         } catch (e) {
             console.warn("Could not check URL for query: ", e.message);
@@ -925,11 +914,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- CLIPBOARD FALLBACK ---
     function showCopyFeedback(message) {
-        copyFeedback.textContent = message;
-        copyFeedback.style.opacity = '1';
-        setTimeout(() => { 
-            copyFeedback.style.opacity = '0';
-        }, 2000);
+        // This function is no longer used but kept in case
+        // copy functionality is re-added elsewhere.
+        const feedback = document.createElement('span');
+        feedback.className = 'text-success ms-2';
+        feedback.textContent = message;
+        feedback.style.opacity = '1';
+        feedback.style.transition = 'opacity 0.3s ease-in-out';
+        
+        const controls = document.getElementById('query-controls');
+        if (controls) {
+            controls.insertAdjacentElement('afterend', feedback);
+            setTimeout(() => { 
+                feedback.style.opacity = '0';
+                setTimeout(() => feedback.remove(), 300);
+            }, 2000);
+        }
     }
 
     function fallbackCopyTextToClipboard(text, message) {
@@ -948,12 +948,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showCopyFeedback('Failed!');
         }
         document.body.removeChild(textArea);
-    }
-    
-    function copyQuery() {
-        const queryString = stateToQueryString();
-        if (!queryString) return;
-        fallbackCopyTextToClipboard(queryString, 'Copied!');
     }
     
     // --- FILTERING & RENDERING ---
@@ -1088,12 +1082,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    function copyQuery() {
-        const queryString = stateToQueryString();
-        if (!queryString) return;
-        
-        fallbackCopyTextToClipboard(queryString, 'Copied!');
-    }
 });
 </script>
 </body>
