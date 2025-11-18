@@ -176,6 +176,11 @@
                     <!-- Suggestions Panel (for text input) -->
                     <div id="suggestions-panel" class="position-absolute w-100 shadow-5-strong rounded-3" style="display: none;"></div>
                 </div>
+
+                <div class="flex-shrink-0">
+                    <button id="copy-query-btn" class="btn btn-outline-light">Copy</button>
+                    <span id="copy-feedback" class="text-success ms-2" style="opacity: 0; transition: opacity 0.3s ease-in-out;">Copied!</span>
+                </div>
             </div>
              <div class="form-text text-muted mt-2 ps-1 d-flex align-items-center">
                 <span>Press <kbd class="kbd-shortcut">↓</kbd> to see options. Try <kbd class="kbd-shortcut">blocked:false</kbd> or <kbd class="kbd-shortcut">-identities.connection:saml</kbd></span>
@@ -190,8 +195,8 @@
                         <thead>
                             <tr>
                                 <th>Name</th>
-                                <th>Email</th>
-                                <th>Verified</th>
+                                <th>User ID</th>
+                                <th>Connection</th>
                                 <th>Logins</th>
                                 <th>Blocked</th>
                                 <th>Last Login</th>
@@ -208,8 +213,24 @@
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.3.2/mdb.umd.min.js"></script>
 
 <script>
+/**
+ * @file query-builder.js
+ * @description Implements a 'pill-based' query builder component with intelligent auto-complete.
+ *
+ * @architecture
+ * This component operates as a complex, self-contained state machine. The 'state'
+ * is managed not just by the `queryState` array (the pills), but by a sensitive
+ * combination of the text input's value, the suggestion panel's visibility,
+ * and a set of critical state flags (`isSuggesting`, `justCompletedPill`).
+ *
+ * @interaction_model
+ * - "Implicit Submit": The query runs automatically every time a pill is added, removed, or edited.
+ * - "Drill-Down": Selecting a Field (e.g., 'role') immediately triggers the display of valid Values.
+ * - "State Safety": Flags prevent race conditions between focus, click, and input events.
+ */
+
 document.addEventListener('DOMContentLoaded', () => {
-    // --- DATA & STATE ---
+    // --- DATA SCHEMA & MOCKS ---
     const searchableFields = {
         'app_metadata': { type: 'metadata', description: 'Custom app-specific data' },
         'authentication_method': { type: 'enum', description: 'MFA factor used' },
@@ -244,34 +265,62 @@ document.addEventListener('DOMContentLoaded', () => {
         'facebook',
     ];
     const mockUsers = [
-        { name: 'Alice Johnson', email: 'alice.j@workplace.io', email_verified: true, logins_count: 12, blocked: false, last_login: '2025-09-24T10:00:00Z', last_password_reset: '2025-09-01T10:00:00Z', app_metadata: { plan: 'gold', seats: 5 }, organization: { name: 'Acme Corp', id: 'org_GxlLOQd7FVfXMsiA' }, authentication_method: 'Push notification', role: 'Admin', identities: [{ connection: 'Username-Password-Authentication' }] },
-        { name: 'Bob Williams', email: 'bob.w@startup.net', email_verified: false, logins_count: 3, blocked: false, last_login: '2025-09-23T14:30:00Z', last_password_reset: '2025-08-15T14:30:00Z', app_metadata: { plan: 'silver', seats: 1 }, organization: { name: 'Startup Inc', id: 'org_Kj8RnHs3bT2fPqYl' }, authentication_method: 'SMS notification', role: 'Admin', identities: [{ connection: 'google-oauth2' }] },
-        { name: 'Charlie Brown', email: 'charlie.b@example.com', email_verified: true, logins_count: 45, blocked: true, last_login: '2025-09-20T08:15:00Z', last_password_reset: '2025-07-20T08:15:00Z', user_metadata: { theme: 'dark', language: 'en' }, organization: { name: 'Acme Corp', id: 'org_GxlLOQd7FVfXMsiA' }, authentication_method: 'One-time password', role: 'Viewer', identities: [{ connection: 'saml' }] },
-        { name: 'Diana Miller', email: 'diana.m@design.co', email_verified: true, logins_count: 0, blocked: false, last_login: null, last_password_reset: null, authentication_method: 'Email', role: 'Viewer', identities: [{ connection: 'Username-Password-Authentication' }] },
-        { name: 'Ethan Davis', email: 'ethan.d@dev-team.org', email_verified: false, logins_count: 1, blocked: false, last_login: '2025-09-04T20:45:00Z', last_password_reset: '2025-09-04T20:45:00Z', app_metadata: { plan: 'gold', seats: 10 }, organization: { name: 'Startup Inc', id: 'org_Kj8RnHs3bT2fPqYl' }, authentication_method: 'WebAuthn', role: 'Editor', identities: [{ connection: 'google-oauth2' }] },
-        { name: 'Fiona Green', email: 'fiona.g@example.org', email_verified: true, logins_count: 88, blocked: false, last_login: '2025-08-15T11:00:00Z', last_password_reset: '2025-06-10T11:00:00Z', user_metadata: { theme: 'light' }, authentication_method: 'Push notification', role: 'Viewer', identities: [{ connection: 'facebook' }] }
+        { name: 'Alice Johnson', email: 'alice.j@workplace.io', email_verified: true, logins_count: 12, blocked: false, last_login: '2025-09-24T10:00:00Z', last_password_reset: '2025-09-01T10:00:00Z', app_metadata: { plan: 'gold', seats: 5 }, organization: { name: 'Acme Corp', id: 'org_GxlLOQd7FVfXMsiA' }, authentication_method: 'Push notification', role: 'Admin', identities: [{ connection: 'Username-Password-Authentication', user_id: 'auth0|102938475610293847561' }] },
+        { name: 'Bob Williams', email: 'bob.w@startup.net', email_verified: false, logins_count: 3, blocked: false, last_login: '2025-09-23T14:30:00Z', last_password_reset: '2025-08-15T14:30:00Z', app_metadata: { plan: 'silver', seats: 1 }, organization: { name: 'Startup Inc', id: 'org_Kj8RnHs3bT2fPqYl' }, authentication_method: 'SMS notification', role: 'Admin', identities: [{ connection: 'google-oauth2', user_id: 'google-oauth2|110572398439748821955' }] },
+        { name: 'Charlie Brown', email: 'charlie.b@example.com', email_verified: true, logins_count: 45, blocked: true, last_login: '2025-09-20T08:15:00Z', last_password_reset: '2025-07-20T08:15:00Z', user_metadata: { theme: 'dark', language: 'en' }, organization: { name: 'Acme Corp', id: 'org_GxlLOQd7FVfXMsiA' }, authentication_method: 'One-time password', role: 'Viewer', identities: [{ connection: 'saml', user_id: 'saml|192837465019283746509' }] },
+        { name: 'Diana Miller', email: 'diana.m@design.co', email_verified: true, logins_count: 0, blocked: false, last_login: null, last_password_reset: null, authentication_method: 'Email', role: 'Viewer', identities: [{ connection: 'Username-Password-Authentication', user_id: 'auth0|156473829105647382910' }] },
+        { name: 'Ethan Davis', email: 'ethan.d@dev-team.org', email_verified: false, logins_count: 1, blocked: false, last_login: '2025-09-04T20:45:00Z', last_password_reset: '2025-09-04T20:45:00Z', app_metadata: { plan: 'gold', seats: 10 }, organization: { name: 'Startup Inc', id: 'org_Kj8RnHs3bT2fPqYl' }, authentication_method: 'WebAuthn', role: 'Editor', identities: [{ connection: 'google-oauth2', user_id: 'google-oauth2|221683498540859932066' }] },
+        { name: 'Fiona Green', email: 'fiona.g@example.org', email_verified: true, logins_count: 88, blocked: false, last_login: '2025-08-15T11:00:00Z', last_password_reset: '2025-06-10T11:00:00Z', user_metadata: { theme: 'light' }, authentication_method: 'Push notification', role: 'Viewer', identities: [{ connection: 'facebook', user_id: 'facebook|105723984397488219556' }] }
     ];
 
+    // --- COMPONENT STATE & FLAGS ---
+    
+    /**
+     * The 'source of truth' for the rendered pills.
+     * @type {Array<Object>}
+     */
     let queryState = [];
+    
+    /**
+     * Tracks which suggestion is highlighted in the menu (0-indexed).
+     * @type {number}
+     */
     let activeSuggestionIndex = -1;
+    
+    /**
+     * Tracks which pill is being edited, so we can insert the update at the correct index.
+     * @type {number}
+     */
     let editingPillIndex = -1;
-    let isSuggesting = false; // Flag to prevent focus-trigger after click
-    let justCompletedPill = false; // Flag to control suggestion refresh
+    
+    /**
+     * [RACE CONDITION FIX]
+     * This is the component's most critical flag. It is set to `true` at the start of `selectSuggestion()`.
+     * Its job is to tell `handleFocus()` "Do not run, I am already handling the state."
+     * This prevents the focus event (triggered by clicking a menu item) from firing `handleInput()`
+     * at the same time as `selectSuggestion()` logic, which would break the menu-swapping logic.
+     * @type {boolean}
+     */
+    let isSuggesting = false;
+    
+    /**
+     * [UI/UX FLAG]
+     * This flag tells event handlers that a pill was *just* completed.
+     * Its job is to prevent the suggestion menu from re-appearing immediately after
+     * a user hits Enter or clicks a value, which would be visually jarring.
+     * It is reset by `ArrowDown` or any new `handleInput` event.
+     * @type {boolean}
+     */
+    let justCompletedPill = false;
 
-    // --- DATE HELPERS ---
+
+    // --- HELPER FUNCTIONS ---
     function getISODateRange(daysAgo) {
         const end = new Date();
         const start = new Date();
-        
-        const formatDate = (date) => {
-            return date.toISOString().split('T')[0];
-        };
-
-        if (daysAgo === 1) { // "Last day" (today)
-            return `[${formatDate(end)} TO ${formatDate(end)}]`;
-        }
-        
-        start.setDate(start.getDate() - (daysAgo - 1)); // -6 days ago for "last 7 days"
+        const formatDate = (date) => date.toISOString().split('T')[0];
+        if (daysAgo === 1) return `[${formatDate(end)} TO ${formatDate(end)}]`;
+        start.setDate(start.getDate() - (daysAgo - 1));
         return `[${formatDate(start)} TO ${formatDate(end)}]`;
     }
 
@@ -287,6 +336,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const pillInputContainer = document.getElementById('pill-input-container');
     const queryInput = document.getElementById('pill-query-input');
     const suggestionsPanel = document.getElementById('suggestions-panel');
+    const copyQueryBtn = document.getElementById('copy-query-btn');
+    const copyFeedback = document.getElementById('copy-feedback');
     const userTableBody = document.getElementById('user-table-body');
     const clearAllBtn = document.getElementById('clear-all-btn');
     const shareQueryBtn = document.getElementById('share-query-btn');
@@ -297,6 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EVENT LISTENERS ---
     pillInputContainer.addEventListener('click', () => queryInput.focus());
+    copyQueryBtn.addEventListener('click', copyQuery);
     queryInput.addEventListener('paste', handlePaste);
     queryInput.addEventListener('input', handleInput);
     queryInput.addEventListener('keydown', handleKeyDown);
@@ -326,10 +378,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- CORE PILL LOGIC ---
+
+    /**
+     * Updates the query state, re-renders pills, and automatically triggers the query run.
+     * This centralizes state updates and ensures consistency.
+     */
     function setQueryState(newState) {
         queryState = newState;
         renderPills();
-        runQuery(); // Run query every time state changes
+        runQuery(); // Implicit submit behavior: update results immediately
     }
     
     function addPill(pill) {
@@ -340,8 +397,8 @@ document.addEventListener('DOMContentLoaded', () => {
             queryState.push(pill);
         }
         renderPills();
-        justCompletedPill = true; // Flag that we just made a pill
-        runQuery(); // Run query every time a pill is added
+        justCompletedPill = true; // Prevents menu re-open on completion
+        runQuery(); // Implicit submit
     }
     
     function removePill(index, skipQueryRun = false) {
@@ -353,7 +410,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- VALIDATION LOGIC ---
+    /**
+     * Validates if a pill's value matches its field type.
+     * Returns true if valid, false otherwise. used for styling 'invalid' pills (dashed red border).
+     */
     function validatePillValue(key, value) {
         const baseField = key.split('.')[0];
         const field = searchableFields[baseField] || searchableFields[key];
@@ -404,9 +464,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!validatePillValue(item.key, item.value)) {
                     element.classList.add('invalid');
                 }
-                if (item.negated) {
-                    // element.classList.add('negated'); 
-                }
 
                 element.textContent = `${item.negated ? '-' : ''}${item.key}:${item.value}`;
                 
@@ -436,12 +493,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+     * Called when a user clicks a pill. Reverts it to text format for editing.
+     */
     function handleEditPill(index) {
         const pillToEdit = queryState[index];
         if (!pillToEdit || pillToEdit.type !== 'condition') return;
 
         editingPillIndex = index;
-        removePill(index, true); // Pass true to skip running query
+        removePill(index, true); // Skip query run to avoid flicker
 
         const pillText = `${pillToEdit.negated ? '-' : ''}${pillToEdit.key}:${pillToEdit.value}`;
         queryInput.value = pillText;
@@ -462,14 +522,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const pastedText = (e.clipboardData || window.clipboardData).getData('text').trim();
         if (!pastedText) return;
 
-        // Only intercept if it's a full query and the input is empty
+        // Only intercept if it's a full query (contains :) and the input is empty
         if (pastedText.includes(':') && queryInput.value === '') {
-            e.preventDefault(); // Intercept only in this case
+            e.preventDefault(); 
             parseStringToPills(pastedText);
             queryInput.value = '';
             // runQuery() will be called by parseStringToPills -> setQueryState
         }
-        // Otherwise, let the default paste happen (for pasting values)
+        // Otherwise, let the default paste happen (for pasting simple values)
     }
 
     function parseStringToPills(text) {
@@ -482,7 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 negated = true;
                 part = part.substring(1);
             }
-            const conditionMatch = part.match(/^(\S+?):(.*)$/); // Key, and the rest is the value
+            const conditionMatch = part.match(/^(\S+?):(.*)$/);
             if (conditionMatch) {
                 newPills.push({ type: 'condition', key: conditionMatch[1], value: conditionMatch[2], negated: negated });
             }
@@ -495,6 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- EVENT HANDLERS & INTELLISENSE ---
+    
     function runQuery() {
         const hasInvalidPills = queryState.some(pill => !validatePillValue(pill.key, pill.value));
         if (hasInvalidPills) {
@@ -505,12 +566,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const filteredUsers = filterUsers(query || queryInput.value);
         renderUserTable(filteredUsers);
         updateURL(query);
-        // We no longer hide suggestions here, as it might be annoying
-        // hideSuggestions();
     }
     
+    /**
+     * Main handler for text input. Analyzes text and renders appropriate suggestions.
+     */
     function handleInput() {
-        justCompletedPill = false; // [FIX] Any new input resets the flag
+        justCompletedPill = false; // [STATE] Any new input invalidates this flag
         const { value, selectionStart } = queryInput;
         if (value.trim() === '' && editingPillIndex > -1) {
             editingPillIndex = -1;
@@ -522,6 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function handleKeyDown(e) {
+        // Backspace deletes last pill if input is empty
         if (e.key === 'Backspace' && queryInput.value === '' && queryState.length > 0) {
             e.preventDefault();
             removePill(queryState.length - 1);
@@ -529,13 +592,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const suggestionsVisible = suggestionsPanel.style.display !== 'none';
 
+        // Down arrow logic
         if (e.key === 'ArrowDown' && !suggestionsVisible && queryInput.value.trim() === '') {
             e.preventDefault();
-            justCompletedPill = false; // Clear flag so focus can show menu
+            justCompletedPill = false; // [STATE] Allow menu to open
             handleFocus();
             return;
         }
 
+        // Selection Logic
         if (suggestionsVisible && (e.key === 'Enter' || e.key === 'Tab')) {
             if (activeSuggestionIndex > -1) {
                 e.preventDefault();
@@ -544,18 +609,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
+        // Fallback Enter Logic (Commit text if no suggestion selected)
         if (e.key === 'Enter') {
-            // If suggestions are visible but nothing is selected (e.g., string filter),
-            // or if suggestions are hidden, commit the text as a pill.
-            // runQuery() will be called by addPill().
             if (!suggestionsVisible || (suggestionsVisible && activeSuggestionIndex === -1)) {
                 e.preventDefault();
                 addPillFromInput();
-                // runQuery() is no longer needed here, addPill handles it.
                 return;
             }
         }
 
+        // Navigation Logic
         if (suggestionsVisible) {
              if (e.key === 'ArrowDown') { e.preventDefault(); updateActiveSuggestion(1); } 
              else if (e.key === 'ArrowUp') { e.preventDefault(); updateActiveSuggestion(-1); } 
@@ -569,9 +632,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+     /**
+      * Handles focus events. Shows suggestions unless a pill was just completed or a suggestion is being selected.
+      */
      function handleFocus() {
+        // [RACE CONDITION FIX]
         if (isSuggesting) { 
-            isSuggesting = false;
+            isSuggesting = false; // Reset and ignore
             return; 
         }
         if (editingPillIndex === -1 && !justCompletedPill) {
@@ -581,6 +648,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
      }
     
+    /**
+     * Parses the input string to determine context (field, value, or metadata).
+     */
     function analyzeQuery(text, cursorPosition) {
         const textUpToCursor = text.substring(0, cursorPosition);
         
@@ -611,6 +681,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return { currentToken: queryText, context: 'field', prefix: prefix };
     }
     
+    /**
+     * Returns appropriate suggestions based on the analysis context.
+     */
     function getSuggestions(analysis) {
         const { currentToken, context, field } = analysis;
         if (context === 'value') {
@@ -656,7 +729,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return type === 'string' || type === 'enum';
             });
 
-            // [FIX] Smart prefilled suggestions for enums
+            // Smart prefilled suggestions (case-insensitive)
             const prefilledSuggestions = [];
             const tokenLower = currentToken.toLowerCase();
 
@@ -684,8 +757,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return { type: 'field', values: Object.keys(searchableFields) };
     }
     
+    /**
+     * The core 'router' function for selection logic.
+     * Handles creating pills, updating text, and managing focus transitions.
+     */
     function selectSuggestion(selected, type) {
-        isSuggesting = true; // Tell handleFocus to ignore this
+        isSuggesting = true; // [RACE CONDITION FIX] Block handleFocus
         const { value, selectionStart } = queryInput;
         const analysis = analyzeQuery(value, selectionStart);
         const { currentToken, field, prefix, existingValues } = analysis;
@@ -732,6 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } 
         else if (type === 'field') {
+            // Drill-down logic: Update input with field name and prepare for value entry
             let replacement = '';
             const fieldType = searchableFields[selected]?.type;
             if (fieldType === 'metadata') {
@@ -749,7 +827,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             queryInput.focus();
             
-            // Check the flag. If we just completed a pill, don't re-show suggestions.
+            // [STATE] If pill completed, do not re-open menu
             if (justCompletedPill) {
                 justCompletedPill = false; // Reset flag
                 const end = queryInput.value.length;
@@ -806,17 +884,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderSuggestions(suggestions, analysis) {
+        // Helper text for Metadata
         if (analysis.context === 'metadata_path') {
             suggestionsPanel.innerHTML = `<div class="suggestion-helper">Complete the path and add a value. (e.g. type:legacy)</div>`;
             suggestionsPanel.style.display = 'block';
-            activeSuggestionIndex = -1; // [FIX] Reset index for helper
+            activeSuggestionIndex = -1; 
             return;
         }
 
+        // Helper text for Strings
         if (analysis.context === 'value' && analysis.field === 'organization') {
             suggestionsPanel.innerHTML = `<div class="suggestion-helper">Enter an organization name or ID (e.g., org_xyz).</div>`;
             suggestionsPanel.style.display = 'block';
-            activeSuggestionIndex = -1; // [FIX] Reset index for helper
+            activeSuggestionIndex = -1;
             return;
         }
 
@@ -834,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.href = '#!';
             item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
             item.dataset.value = suggestion;
-            item.dataset.type = suggestions.type; // e.g., 'field', 'value', 'prefilled_query'
+            item.dataset.type = suggestions.type; 
             
             let description = '';
             let mainText = suggestion;
@@ -865,7 +945,7 @@ document.addEventListener('DOMContentLoaded', () => {
         suggestionsPanel.appendChild(listGroup);
         suggestionsPanel.style.display = 'block';
 
-        // Find only selectable items for keyboard navigation
+        // Auto-highlight first selectable item
         const items = suggestionsPanel.querySelectorAll('.list-group-item-action');
         activeSuggestionIndex = items.length > 0 ? 0 : -1;
         if (activeSuggestionIndex === 0 && items.length > 0) {
@@ -912,22 +992,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- CLIPBOARD FALLBACK ---
+    // --- CLIPBOARD UTILS ---
     function showCopyFeedback(message) {
-        // This function is no longer used but kept in case
-        // copy functionality is re-added elsewhere.
-        const feedback = document.createElement('span');
-        feedback.className = 'text-success ms-2';
-        feedback.textContent = message;
-        feedback.style.opacity = '1';
-        feedback.style.transition = 'opacity 0.3s ease-in-out';
-        
-        const controls = document.getElementById('query-controls');
-        if (controls) {
-            controls.insertAdjacentElement('afterend', feedback);
+       const feedback = document.getElementById('copy-feedback');
+        if (feedback) {
+            feedback.style.opacity = '1';
             setTimeout(() => { 
                 feedback.style.opacity = '0';
-                setTimeout(() => feedback.remove(), 300);
             }, 2000);
         }
     }
@@ -950,14 +1021,28 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(textArea);
     }
     
+    function copyQuery() {
+        const queryString = stateToQueryString();
+        if (!queryString) return;
+        fallbackCopyTextToClipboard(queryString, 'Copied!');
+    }
+    
     // --- FILTERING & RENDERING ---
     function getNestedValue(obj, path) {
         if (path === 'identities.connection' && Array.isArray(obj.identities)) {
             return obj.identities;
         }
+        // [FIX] Handle user_id extraction from identity array
+        if (path === 'identities.user_id' && Array.isArray(obj.identities)) {
+            return obj.identities;
+        }
         return path.split('.').reduce((acc, part) => acc && acc[part] !== undefined ? acc[part] : undefined, obj);
     }
 
+    /**
+     * Main filtering logic. 
+     * CRITICAL: Date checks must happen BEFORE string checks to avoid incorrect casting.
+     */
     function filterUsers(query) {
         if (!query) return mockUsers;
         if (!query.includes(':')) {
@@ -1014,6 +1099,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const fieldType = searchableFields[baseField]?.type || searchableFields[field]?.type;
                         const valueType = typeof userValue;
 
+                        // [CRITICAL FIX] Date check must be first
                         if (fieldType === 'date') {
                             const dateParts = value.match(/^\[(.*?)\sTO\s(.*?)\]$/);
                             if (dateParts) {
@@ -1069,15 +1155,44 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderUserTable(users) {
         userTableBody.innerHTML = '';
         if (users.length === 0) {
-            userTableBody.innerHTML = `<tr><td colspan="6" class="text-center py-5">No users found.</td></tr>`;
+            userTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-5">No users found.</td></tr>`;
             return;
         }
         users.forEach(user => {
             const row = document.createElement('tr');
-            const verifiedBadge = user.email_verified ? `<span class="badge rounded-pill badge-success">Yes</span>` : `<span class="badge rounded-pill badge-warning">No</span>`;
-            const blockedBadge = user.blocked ? `<span class="badge rounded-pill badge-danger">Yes</span>` : `<span class="badge rounded-pill badge-secondary">No</span>`;
+
+            // Get identity info, with fallbacks
+            const identity = user.identities && user.identities.length > 0 ? user.identities[0] : {};
+            const connection = identity.connection || 'N/A';
+            const userId = identity.user_id || 'N/A';
+
             const lastLogin = user.last_login ? new Date(user.last_login).toLocaleDateString() : 'N/A';
-            row.innerHTML = `<td>${user.name}</td><td>${user.email}</td><td>${verifiedBadge}</td><td>${user.logins_count}</td><td>${blockedBadge}</td><td>${lastLogin}</td>`;
+
+            // Column 1: Name & Email
+            const nameCell = `
+                <td>
+                    <div class="d-flex flex-column">
+                        <span class="fw-bold">${user.name || 'N/A'}</span>
+                        <small class="text-muted">${user.email || 'N/A'}</small>
+                    </div>
+                </td>`;
+            
+            // Column 2: User ID
+            const userIdCell = `<td><span class="font-monospace">${userId}</span></td>`;
+            
+            // Column 3: Connection
+            const connectionCell = `<td>${connection}</td>`;
+            
+            // Column 4: Logins
+            const loginsCell = `<td>${user.logins_count}</td>`;
+            
+            // Column 5: Last Login
+            const blockedStatus = user.blocked ? 'True' : 'False';
+            const blockedCell = `<td>${blockedStatus}</td>`;
+            
+            const lastLoginCell = `<td>${lastLogin}</td>`;
+
+            row.innerHTML = `${nameCell}${userIdCell}${connectionCell}${loginsCell}${blockedCell}${lastLoginCell}`;
             userTableBody.appendChild(row);
         });
     }
